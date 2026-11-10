@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kameralı Mobil Barkod Sayacı</title>
+    <!-- Kamera ile barkod okuma kütüphanesi -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #f1f3f5;
+            color: #212529;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        h2 {
+            text-align: center;
+            color: #1a252f;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        #camera-section {
+            background: #212529;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            border: 2px solid #343a40;
+            display: none;
+        }
+        #reader {
+            width: 100% !important;
+            border: none !important;
+        }
+        #reader button {
+            display: none !important;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ced4da;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        input[type="text"]:focus {
+            border-color: #4dabf7;
+            outline: none;
+        }
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        button.action-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            transition: background-color 0.2s;
+        }
+        .btn-camera-toggle {
+            grid-column: span 2;
+            background-color: #4dabf7;
+            margin-bottom: 5px;
+        }
+        .btn-camera-toggle.active {
+            background-color: #e03131;
+        }
+        .btn-excel { background-color: #2b8a3e; }
+        .btn-excel:active { background-color: #237032; }
+        .btn-clear { background-color: #868e96; }
+        .btn-clear:active { background-color: #495057; }
+        
+        #scan-flash {
+            height: 4px;
+            background: transparent;
+            margin-bottom: 10px;
+            transition: background 0.1s ease;
+        }
+        .flash-active { background: #40c057 !important; }
+
+        .table-container {
+            max-height: 35vh;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+        }
+        th {
+            background-color: #343a40;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .td-count {
+            width: 70px;
+            text-align: center;
+            font-weight: bold;
+            color: #1c7ed6;
+        }
+        .total-info {
+            margin-top: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #495057;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Kameralı Barkod Sistemi</h2>
+    
+    <button class="action-btn btn-camera-toggle" id="cameraToggleBtn" onclick="toggleCamera()">Kamerayı Aç</button>
+
+    <div id="camera-section">
+        <div id="reader"></div>
+    </div>
+
+    <div id="scan-flash"></div>
+
+    <div class="input-group">
+        <input type="text" id="barcodeInput" placeholder="Veya buraya el ile yazıp Enter'a basın...">
+    </div>
+
+    <div class="btn-group">
+        <button class="action-btn btn-excel" onclick="exportToExcel()">Excel (.xls) İndir</button>
+        <button class="action-btn btn-clear" onclick="clearList()">Listeyi Temizle</button>
+    </div>
+
+    <div class="table-container">
+        <table id="barcodeTable">
+            <thead>
+                <tr>
+                    <th>Barkod No</th>
+                    <th style="text-align: center;">Adet</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Veriler -->
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="total-info">
+        <span id="totalItems">Farklı Ürün: 0</span>
+        <span id="totalCounts">Toplam Adet: 0</span>
+    </div>
+</div>
+
+<script>
+    const barcodeInput = document.getElementById('barcodeInput');
+    const tableBody = document.querySelector('#barcodeTable tbody');
+    const totalItems = document.getElementById('totalItems');
+    const totalCounts = document.getElementById('totalCounts');
+    const scanFlash = document.getElementById('scan-flash');
+    const cameraSection = document.getElementById('camera-section');
+    const cameraToggleBtn = document.getElementById('cameraToggleBtn');
+    
+    let barcodeData = JSON.parse(localStorage.getItem('savedBarcodesBtn')) || {};
+    let lastScannedCode = "";
+    let lastScannedTime = 0;
+    let html5QrCode = null;
+
+    renderTable();
+
+    function toggleCamera() {
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("reader");
+        }
+
+        if (cameraSection.style.display === "none" || cameraSection.style.display === "") {
+            cameraSection.style.display = "block";
+            cameraToggleBtn.textContent = "Kamerayı Kapat";
+            cameraToggleBtn.classList.add("active");
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                {
+                    fps: 15,
+                    qrbox: { width: 250, height: 150 }
+                },
+                onScanSuccess
+            ).catch(err => {
+                alert("Kamera başlatılamadı! Lütfen kamera izni verdiğinizden emin olun.");
+                console.error(err);
+                stopCameraUI();
+            });
+        } else {
+            html5QrCode.stop().then(() => {
+                stopCameraUI();
+            }).catch(err => {
+                console.error("Kamera durdurulurken hata oluştu:", err);
+                stopCameraUI();
+            });
+        }
+    }
+
+    function stopCameraUI() {
+        cameraSection.style.display = "none";
+        cameraToggleBtn.textContent = "Kamerayı Aç";
+        cameraToggleBtn.classList.remove("active");
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+        const currentTime = Date.now();
+        
+        if (decodedText === lastScannedCode && (currentTime - lastScannedTime < 1500)) {
+            return; 
+        }
+
+        lastScannedCode = decodedText;
+        lastScannedTime = currentTime;
+
+        scanFlash.classList.add('flash-active');
+        setTimeout(() => scanFlash.classList.remove('flash-active'), 300);
+
+        playBeep();
+        ekleVeyaArttir(decodedText);
+    }
+
+    function playBeep() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.12);
+        } catch (e) {
+            console.log("Ses hatası.");
+        }
+    }
+
+    barcodeInput.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault(); 
+            const barcode = barcodeInput.value.trim();
+            if (barcode !== "") {
+                ekleVeyaArttir(barcode);
+            }
+            barcodeInput.value = "";
+        }
+    });
+
+    function ekleVeyaArttir(barcode) {
+        if (barcodeData[barcode]) {
+            barcodeData[barcode] += 1;
+        } else {
+            barcodeData[barcode] = 1;
+        }
+        saveAndRefresh();
+    }
+
+    function saveAndRefresh() {
+        localStorage.setItem('savedBarcodesBtn', JSON.stringify(barcodeData));
+        renderTable();
+    }
+
+    function renderTable() {
+        tableBody.innerHTML = "";
+        let totalQty = 0;
+        let uniqueItems = 0;
+        const keys = Object.keys(barcodeData).reverse();
+
+        keys.forEach(barcode => {
+            const count = barcodeData[barcode];
+            totalQty += count;
+            uniqueItems++;
+
+            const row = document.createElement('tr');
+            const barcodeCell = document.createElement('td');
+            barcodeCell.textContent = barcode;
+            
+            const countCell = document.createElement('td');
+            countCell.textContent = count;
+            countCell.className = "td-count";
+            
+            row.appendChild(barcodeCell);
+            row.appendChild(countCell);
+            tableBody.appendChild(row);
+        });
+
+        totalItems.textContent = `Farklı Ürün: ${uniqueItems}`;
+        totalCounts.textContent = `Toplam Adet: ${totalQty}`;
+    }
+
+    function clearList() {
