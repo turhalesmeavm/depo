@@ -1,677 +1,451 @@
 <!DOCTYPE html>
-<html lang="tr" class="h-full bg-slate-900 text-slate-100">
+<html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel Entegreli Barkod & Adet Sayacı</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Barkod Okuyucu & Excel Adet Eşleştirici</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SheetJS Library for Excel Import/Export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- HTML5-QRCode Library CDN -->
+    <!-- HTML5-QRCode Library -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Google Fonts Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS (xlsx) for Excel processing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        #reader video { object-fit: cover !important; border-radius: 0.75rem; }
-        #reader__dashboard { display: none !important; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
-        ::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.8); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 1); }
-        .highlight-row { animation: flashHighlight 1.5s ease-out; }
-        @keyframes flashHighlight {
-            0% { background-color: rgba(16, 185, 129, 0.4); }
-            100% { background-color: transparent; }
+        #reader video {
+            object-fit: cover !important;
+            border-radius: 0.75rem;
         }
     </style>
 </head>
-<body class="h-full flex flex-col justify-between antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
 
-    <!-- Header Navigation -->
-    <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700/60 sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center space-x-3">
-                <div class="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-500/30">
-                    <i data-lucide="file-spreadsheet" class="w-6 h-6"></i>
-                </div>
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 mb-6 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-barcode text-blue-500 text-3xl"></i>
                 <div>
-                    <h1 class="font-bold text-lg leading-tight text-white">Excel Barkod & Stok Eşleştirici</h1>
-                    <div class="flex items-center gap-2">
-                        <p class="text-xs text-slate-400">A Sütunu: Barkod | F Sütunu: Adet</p>
-                        <span class="inline-flex items-center gap-1 text-[10px] bg-indigo-500/20 text-indigo-300 font-semibold px-2 py-0.5 rounded-md border border-indigo-500/30">
-                            <i data-lucide="shield-check" class="w-3 h-3"></i> EAN-13 Modu
-                        </span>
-                    </div>
+                    <h1 class="text-xl font-bold tracking-wide">Barkod & Excel Sayım Sistemi</h1>
+                    <p class="text-xs text-slate-400">Tüm Barkod Türlerini Destekler (A Sütunu: Barkod, F Sütunu: Adet)</p>
                 </div>
             </div>
-            
-            <!-- Quick Stats Badge -->
-            <div class="flex items-center gap-3 bg-slate-900/80 border border-slate-700/60 px-4 py-2 rounded-xl text-sm">
-                <div class="flex flex-col">
-                    <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Toplam Kalem</span>
-                    <strong id="totalTypesCount" class="text-indigo-400 font-bold text-base">0</strong>
-                </div>
-                <div class="h-6 w-px bg-slate-700"></div>
-                <div class="flex flex-col">
-                    <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Toplam Sayılan</span>
-                    <strong id="totalItemsCount" class="text-emerald-400 font-bold text-base">0</strong>
-                </div>
+            <div class="flex items-center gap-2">
+                <button id="btnExport" disabled onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2 shadow">
+                    <i class="fa-solid fa-file-excel"></i> Excel Olarak İndir
+                </button>
             </div>
         </div>
     </header>
 
-    <!-- Main Content Area -->
-    <main class="max-w-6xl w-full mx-auto p-4 flex-1 flex flex-col gap-6">
+    <!-- Main Container -->
+    <main class="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        <!-- File Upload Banner (If no file uploaded yet) -->
-        <div id="uploadBanner" class="bg-indigo-950/40 border-2 border-dashed border-indigo-500/40 rounded-2xl p-6 text-center hover:border-indigo-500/70 transition cursor-pointer relative" onclick="document.getElementById('excelFileInput').click()">
-            <input type="file" id="excelFileInput" accept=".xlsx, .xls" class="hidden" onchange="handleFileUpload(event)">
-            <div class="flex flex-col items-center gap-2">
-                <div class="p-3 bg-indigo-600/20 text-indigo-400 rounded-full">
-                    <i data-lucide="upload-cloud" class="w-8 h-8"></i>
-                </div>
-                <h3 class="text-base font-semibold text-slate-200">Mevcut Excel Dosyanızı Yükleyin (.xlsx veya .xls)</h3>
-                <p class="text-xs text-slate-400 max-w-md">
-                    Sistem A sütunundaki barkodları okuyup eşleştirecek ve okutulan adetleri F sütununa yazacaktır. Dosya yoksa boş şablonla da başlayabilirsiniz.
-                </p>
-                <div class="mt-2 flex gap-2">
-                    <button type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/30">
-                        Dosya Seç
-                    </button>
-                    <button type="button" onclick="event.stopPropagation(); initializeBlankExcel()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs px-4 py-2 rounded-xl border border-slate-700">
-                        Sıfırdan Başla
-                    </button>
-                </div>
-            </div>
-        </div>
+        <!-- Left Column: Upload & Scanner -->
+        <section class="lg:col-span-5 space-y-6">
 
-        <!-- Scanner & Controls Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            
-            <!-- Camera Scanner Box -->
-            <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between min-h-[320px]">
-                <div class="flex items-center justify-between mb-3">
-                    <span class="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                        <i data-lucide="camera" class="w-4 h-4 text-indigo-400"></i> Barkod Okuyucu Kamera
-                    </span>
-                    <div class="flex items-center gap-2">
-                        <span id="cameraStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">
-                            <span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı
-                        </span>
-                    </div>
-                </div>
-
-                <!-- QR/Barcode Reader Window -->
-                <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-700/50 flex items-center justify-center">
-                    <div id="reader" class="w-full h-full"></div>
-                    
-                    <!-- Scanner Placeholder state when off -->
-                    <div id="scannerPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-900/90 z-10">
-                        <div class="p-4 bg-slate-800 rounded-full mb-3 text-slate-500 border border-slate-700">
-                            <i data-lucide="camera-off" class="w-8 h-8"></i>
-                        </div>
-                        <p class="text-sm text-slate-400">Kamera kapalı</p>
-                        <p class="text-xs text-slate-500 mt-1">Barkod taramak için aşağıdaki butondan kamerayı açın</p>
-                    </div>
-
-                    <!-- Scan Feedback Overlay Animation -->
-                    <div id="scanFeedback" class="absolute inset-0 bg-emerald-500/20 border-4 border-emerald-500 rounded-xl pointer-events-none opacity-0 transition-opacity duration-200 z-20 flex items-center justify-center">
-                        <div class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg flex items-center gap-2">
-                            <i data-lucide="check-circle-2" class="w-5 h-5"></i> Barkod Eşlendi!
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Camera Action Controls -->
-                <div class="mt-4 flex gap-2">
-                    <button id="btnStartCam" onclick="startScanner()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 rounded-xl transition duration-150 shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 text-sm">
-                        <i data-lucide="play" class="w-4 h-4"></i> Kamerayı Aç
-                    </button>
-                    <button id="btnStopCam" onclick="stopScanner()" disabled class="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium py-2.5 px-4 rounded-xl transition duration-150 flex items-center justify-center gap-2 text-sm">
-                        <i data-lucide="square" class="w-4 h-4"></i> Kapat
-                    </button>
-                    <button onclick="switchCamera()" title="Kamera Değiştir" class="bg-slate-700 hover:bg-slate-600 text-white p-2.5 rounded-xl transition duration-150">
-                        <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
-                    </button>
+            <!-- 1. Excel Upload Card -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg">
+                <h2 class="text-base font-semibold mb-3 flex items-center gap-2 text-slate-200">
+                    <i class="fa-solid fa-file-import text-blue-400"></i> 1. Excel Dosyası Yükle (.xlsx / .xls)
+                </h2>
+                <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-600 hover:border-blue-500 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-4 cursor-pointer transition-all">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                    <span class="text-xs text-slate-300 font-medium" id="uploadLabel">Excel dosyanızı seçin veya sürükleyin</span>
+                    <span class="text-[10px] text-slate-500 mt-1">Dosya yoksa boş liste ile başlanacaktır</span>
+                    <input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden" onchange="handleFileSelect(event)">
+                </label>
+                <div id="fileInfo" class="hidden mt-3 text-xs bg-slate-700/60 p-2.5 rounded border border-slate-600 flex justify-between items-center">
+                    <span id="fileName" class="truncate font-mono text-emerald-400"></span>
+                    <span id="rowCount" class="bg-slate-600 text-slate-200 text-[10px] px-2 py-0.5 rounded-full font-sans"></span>
                 </div>
             </div>
 
-            <!-- Manual Input & Last Action -->
-            <div class="flex flex-col gap-4">
-                <!-- Manual Entry Card -->
-                <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl">
-                    <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center justify-between">
-                        <span class="flex items-center gap-2">
-                            <i data-lucide="keyboard" class="w-4 h-4 text-indigo-400"></i> Manuel Barkod Okut / Gir
-                        </span>
-                        <span class="text-xs text-slate-500 font-normal">(EAN-13)</span>
+            <!-- 2. Scanner Card -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-base font-semibold flex items-center gap-2 text-slate-200">
+                        <i class="fa-solid fa-camera text-blue-400"></i> 2. Kamera ile Barkod Tara
                     </h2>
+                    <span id="scanStatus" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-400">Kamera Kapalı</span>
+                </div>
+
+                <!-- Camera Container -->
+                <div class="relative bg-black rounded-xl overflow-hidden border border-slate-700 aspect-video flex items-center justify-center">
+                    <div id="reader" class="w-full h-full"></div>
+                    <div id="cameraPlaceholder" class="text-center p-4">
+                        <i class="fa-solid fa-video-slash text-4xl text-slate-600 mb-2"></i>
+                        <p class="text-xs text-slate-400">Kamerayı başlatmak için aşağıdaki butona tıklayın</p>
+                    </div>
+                </div>
+
+                <!-- Camera Controls -->
+                <div class="flex gap-2">
+                    <button id="btnStartCam" onclick="startCamera()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> Kamerayı Başlat
+                    </button>
+                    <button id="btnStopCam" onclick="stopCamera()" disabled class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium py-2 px-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-stop"></i> Durdur
+                    </button>
+                </div>
+
+                <!-- Manual Entry Form -->
+                <div class="pt-3 border-t border-slate-700">
+                    <label class="block text-xs text-slate-400 mb-1">El İle Barkod / Kod Girişi (El Tipi Okuyucular İçin)</label>
                     <form onsubmit="handleManualSubmit(event)" class="flex gap-2">
-                        <input type="text" id="manualInput" maxlength="13" placeholder="Barkodu buraya yazın veya okutun..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-mono">
-                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2.5 rounded-xl transition text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
-                            <i data-lucide="plus" class="w-4 h-4"></i> İşle
-                        </button>
+                        <input type="text" id="manualInput" autocomplete="off" placeholder="Barkodu okutun veya yazın..." class="flex-1 bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm font-mono text-slate-100 outline-none transition-all">
+                        <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded-lg font-medium transition-all">Ekle</button>
                     </form>
                 </div>
+            </div>
 
-                <!-- Last Scanned Info Card -->
-                <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex-1 flex flex-col justify-between">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Son İşlenen Barkod Durumu</span>
-                        <div id="lastScannedDisplay" class="mt-2 text-lg font-mono font-bold text-indigo-300 bg-slate-950/60 p-3 rounded-xl border border-slate-700/40 break-all min-h-[58px] flex items-center justify-between">
-                            <span>-</span>
-                            <span id="lastMatchStatus" class="text-xs font-normal px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 border border-slate-700">Bekleniyor</span>
-                        </div>
+            <!-- Feedback Message -->
+            <div id="toast" class="hidden p-3 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow"></div>
+
+        </section>
+
+        <!-- Right Column: Live Data Table -->
+        <section class="lg:col-span-7">
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg h-full flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-base font-semibold text-slate-200">Sayım Listesi</h2>
+                        <span id="totalItems" class="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-0.5 rounded-full border border-blue-500/20 font-mono">0 Çeşit</span>
+                        <span id="totalQuantity" class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-mono">Toplam: 0 Adet</span>
                     </div>
-                    <p class="text-xs text-slate-400 mt-3 flex items-center gap-1.5">
-                        <i data-lucide="info" class="w-4 h-4 text-slate-500 flex-shrink-0"></i> 
-                        Barkod A sütununda varsa F sütunundaki adet +1 artar, yoksa listenin sonuna yeni eklenir.
-                    </p>
+                    <button onclick="clearList()" class="text-xs text-slate-400 hover:text-red-400 transition-colors flex items-center gap-1">
+                        <i class="fa-solid fa-trash-can"></i> Temizle
+                    </button>
                 </div>
-            </div>
-        </div>
 
-        <!-- Excel Table Live Preview -->
-        <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 md:p-5 shadow-xl flex-1 flex flex-col">
-            <!-- List Header Actions -->
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="table" class="w-5 h-5 text-indigo-400"></i>
-                    <h2 class="font-semibold text-slate-200">Excel Canlı Tablosu (A-F Sütunları)</h2>
-                    <span id="fileNameBadge" class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-md font-mono hidden"></span>
-                </div>
-                
-                <div class="flex items-center gap-2 w-full sm:w-auto">
-                    <button onclick="document.getElementById('excelFileInput').click()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-3 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-slate-600">
-                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Excel Yükle
-                    </button>
-                    <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20">
-                        <i data-lucide="download" class="w-3.5 h-3.5"></i> Excel Olarak İndir (.xlsx)
-                    </button>
-                    <button onclick="clearList()" class="bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-medium px-3 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-rose-800/40">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Temizle
-                    </button>
-                </div>
-            </div>
-
-            <!-- Live Table -->
-            <div class="overflow-x-auto overflow-y-auto max-h-[420px] border border-slate-700/60 rounded-xl bg-slate-900/50">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-slate-900/90 sticky top-0 z-10 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/60">
-                        <tr>
-                            <th class="py-3 px-3 text-center">Satır</th>
-                            <th class="py-3 px-4 bg-indigo-950/40 text-indigo-300 border-b-2 border-indigo-500">A (Barkod)</th>
-                            <th class="py-3 px-4">B</th>
-                            <th class="py-3 px-4">C</th>
-                            <th class="py-3 px-4">D</th>
-                            <th class="py-3 px-4">E</th>
-                            <th class="py-3 px-4 text-center bg-emerald-950/40 text-emerald-300 border-b-2 border-emerald-500">F (Adet)</th>
-                            <th class="py-3 px-4 text-right">İşlem</th>
-                        </tr>
-                    </thead>
-                    <tbody id="excelTableBody" class="divide-y divide-slate-800 text-sm">
-                        <!-- Dynamic Excel Rows -->
-                    </tbody>
-                </table>
-                
-                <!-- Empty State Message -->
-                <div id="emptyListState" class="py-12 text-center flex flex-col items-center justify-center text-slate-500">
-                    <i data-lucide="file-spreadsheet" class="w-10 h-10 mb-2 stroke-1 opacity-50"></i>
-                    <p class="text-sm">Henüz bir Excel yüklenmedi veya liste boş.</p>
-                    <p class="text-xs text-slate-600 mt-0.5">Yarıda bırakmamak için mevcut dosyanızı yükleyebilir veya doğrudan barkod okıtmaya başlayabilirsiniz.</p>
+                <!-- Table Container -->
+                <div class="flex-1 overflow-x-auto border border-slate-700 rounded-lg max-h-[600px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="bg-slate-900/80 text-slate-400 sticky top-0 border-b border-slate-700 backdrop-blur">
+                            <tr>
+                                <th class="p-3 w-16 text-center">A Sütunu (Barkod)</th>
+                                <th class="p-3">B</th>
+                                <th class="p-3">C</th>
+                                <th class="p-3">D</th>
+                                <th class="p-3">E</th>
+                                <th class="p-3 w-20 text-center font-bold text-emerald-400">F (Adet)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-700/60 font-mono">
+                            <tr id="emptyRow">
+                                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                                    <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+                                    Henüz barkod okutulmadı veya Excel yüklenmedi.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </div>
+        </section>
 
     </main>
 
-    <!-- Footer -->
-    <footer class="text-center py-4 text-xs text-slate-500 border-t border-slate-800">
-        GitHub Pages Uyumlu Excel Barkod Okuyucu &bull; A Sütunundaki EAN-13 Barkodlarını F Sütununda Sayar.
-    </footer>
-
-    <!-- Custom Toast Notification -->
-    <div id="toast" class="fixed bottom-4 right-4 z-50 transform translate-y-20 opacity-0 transition-all duration-300 ease-out bg-slate-800 text-slate-100 border border-slate-700 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-        <i id="toastIcon" data-lucide="info" class="w-5 h-5 text-indigo-400"></i>
-        <span id="toastMessage" class="text-sm font-medium">İşlem gerçekleştirildi.</span>
-    </div>
-
-    <!-- Application Script Logic -->
     <script>
-        // State Variables
-        // excelRows holds array of arrays representing rows: [colA, colB, colC, colD, colE, colF, ...]
-        let excelRows = [];
-        let loadedFileName = "barkod_sayim_listesi.xlsx";
+        // Data Structure
+        let excelData = []; // Matrix representation of Excel rows
         let html5QrcodeScanner = null;
-        let isScanning = false;
-        let currentFacingMode = "environment";
-        let lastScannedCode = null;
-        let lastScannedTime = 0;
-        const SCAN_COOLDOWN_MS = 1200;
+        let isProcessing = false;
+        let cooldownTimer = null;
 
-        // Audio Context for Sound Feedback
+        // Audio Context for feedback
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-        function playBeepSound() {
+        function playBeep(freq = 1000, duration = 120) {
             try {
                 if (audioCtx.state === 'suspended') audioCtx.resume();
-                const oscillator = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-                gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.12);
-            } catch (e) {
-                console.log("Ses çalınamadı:", e);
-            }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + (duration / 1000));
+            } catch (e) {}
         }
 
-        // Initialize Icons & Page Setup
-        window.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-            // Start with empty dataset if no Excel loaded
-            updateUI();
-        });
-
-        // EAN-13 Validation Rule
-        function isValidEAN13(code) {
-            if (!/^\d{13}$/.test(code)) return false;
-            let sum = 0;
-            for (let i = 0; i < 12; i++) {
-                let digit = parseInt(code.charAt(i), 10);
-                sum += (i % 2 === 0) ? digit : digit * 3;
-            }
-            let checksum = (10 - (sum % 10)) % 10;
-            return checksum === parseInt(code.charAt(12), 10);
+        function triggerVibrate() {
+            if (navigator.vibrate) navigator.vibrate(100);
         }
 
-        // Excel File Upload Handler
-        function handleFileUpload(event) {
+        // Excel File Handling
+        function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            loadedFileName = file.name;
+            document.getElementById('uploadLabel').textContent = file.name;
+
             const reader = new FileReader();
-
             reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    
-                    // Convert Sheet to 2D Array
-                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-                    
-                    excelRows = rawRows.map(row => {
-                        // Ensure row has at least 6 columns (A=0, B=1, C=2, D=3, E=4, F=5)
-                        const sanitizedRow = [...row];
-                        while (sanitizedRow.length < 6) {
-                            sanitizedRow.push("");
-                        }
-                        // Format barcode in col A as string
-                        sanitizedRow[0] = String(sanitizedRow[0] || "").trim();
-                        // Parse count in col F
-                        let count = parseInt(sanitizedRow[5], 10);
-                        sanitizedRow[5] = isNaN(count) ? (sanitizedRow[5] === "" ? "" : sanitizedRow[5]) : count;
-                        return sanitizedRow;
-                    });
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
 
-                    // Hide upload banner and show status
-                    document.getElementById('uploadBanner').classList.add('hidden');
-                    const fileNameBadge = document.getElementById('fileNameBadge');
-                    fileNameBadge.innerText = file.name;
-                    fileNameBadge.classList.remove('hidden');
+                // Convert sheet to array of arrays (preserving empty cells)
+                const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
 
-                    updateUI();
-                    showToast(`"${file.name}" yüklendi ve işlendi.`, "file-check");
-                } catch (err) {
-                    console.error("Excel okuma hatası:", err);
-                    showToast("Excel dosyası okunamadı! Geçerli .xlsx/.xls yükleyin.", "alert-circle");
-                }
+                excelData = rawRows.map(row => {
+                    let formattedRow = Array.isArray(row) ? [...row] : [];
+                    // Ensure at least 6 columns (A to F)
+                    while (formattedRow.length < 6) formattedRow.push("");
+
+                    // Normalize Barcode (Col A) to String
+                    formattedRow[0] = formattedRow[0] !== undefined && formattedRow[0] !== null ? String(formattedRow[0]).trim() : "";
+
+                    // Normalize Quantity (Col F) to Number
+                    let qty = parseFloat(formattedRow[5]);
+                    formattedRow[5] = !isNaN(qty) ? qty : (formattedRow[0] !== "" ? 0 : "");
+
+                    return formattedRow;
+                });
+
+                document.getElementById('fileInfo').classList.remove('hidden');
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('rowCount').textContent = `${excelData.length} satır yüklendi`;
+                document.getElementById('btnExport').disabled = false;
+
+                renderTable();
+                showToast(`Excel yüklendi: ${excelData.length} satır bulundu.`, 'success');
             };
-
             reader.readAsArrayBuffer(file);
         }
 
-        // Initialize Blank State if user doesn't have an Excel file
-        function initializeBlankExcel() {
-            excelRows = [
-                ["BARKOD (EAN-13)", "ÜRÜN ADI", "KATEGORİ", "BİRİM", "FİYAT", "ADET"]
-            ];
-            document.getElementById('uploadBanner').classList.add('hidden');
-            updateUI();
-            showToast("Boş şablon oluşturuldu.", "file-plus");
-        }
+        // Process Scanned / Inputted Barcode
+        function processBarcode(scannedCode) {
+            if (!scannedCode || isProcessing) return;
 
-        // Process Scanned/Typed Barcode
-        function processBarcode(code) {
-            const cleanCode = code.trim();
-            if (!cleanCode) return;
+            const cleanCode = String(scannedCode).trim();
+            if (cleanCode === "") return;
 
-            if (!isValidEAN13(cleanCode)) {
-                showToast("Geçersiz EAN-13! (13 haneli sayı olmalıdır)", "alert-circle");
-                return;
-            }
+            isProcessing = true;
 
-            // Search for barcode in Column A (index 0)
-            let matchedRowIndex = -1;
-            for (let i = 0; i < excelRows.length; i++) {
-                if (String(excelRows[i][0]).trim() === cleanCode) {
-                    matchedRowIndex = i;
+            // Search in Col A (Index 0)
+            let foundIndex = -1;
+            for (let i = 0; i < excelData.length; i++) {
+                if (excelData[i][0] === cleanCode) {
+                    foundIndex = i;
                     break;
                 }
             }
 
-            const lastScannedDisplay = document.getElementById('lastScannedDisplay');
-            const lastMatchStatus = document.getElementById('lastMatchStatus');
+            if (foundIndex !== -1) {
+                // Barcode EXISTS -> Increment Col F (Index 5)
+                let currentQty = parseFloat(excelData[foundIndex][5]);
+                if (isNaN(currentQty)) currentQty = 0;
+                excelData[foundIndex][5] = currentQty + 1;
 
-            if (matchedRowIndex !== -1) {
-                // MATCH FOUND: Increment Column F (index 5)
-                let currentCount = parseInt(excelRows[matchedRowIndex][5], 10);
-                if (isNaN(currentCount)) currentCount = 0;
-                
-                excelRows[matchedRowIndex][5] = currentCount + 1;
-
-                // UI Status Update
-                lastScannedDisplay.querySelector('span').innerText = cleanCode;
-                lastMatchStatus.className = "text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-800/50";
-                lastMatchStatus.innerText = `Listede Bulundu (Satır ${matchedRowIndex + 1}) -> Adet: ${excelRows[matchedRowIndex][5]}`;
-
-                showToast(`Eşleşti! Sütun F adedi artırıldı: ${excelRows[matchedRowIndex][5]}`, "check-circle");
-                highlightRow(matchedRowIndex);
+                showToast(`[${cleanCode}] adedi artırıldı! Yeni Adet: ${excelData[foundIndex][5]}`, 'success');
             } else {
-                // NO MATCH: Append new row to end of dataset
-                const newRow = [cleanCode, "Yeni Ürün", "-", "-", "-", 1];
-                excelRows.push(newRow);
-                const newRowIdx = excelRows.length - 1;
+                // Barcode NOT FOUND -> Append new row at the end
+                const newRow = [cleanCode, "", "", "", "", 1];
+                excelData.push(newRow);
+                foundIndex = excelData.length - 1;
 
-                // UI Status Update
-                lastScannedDisplay.querySelector('span').innerText = cleanCode;
-                lastMatchStatus.className = "text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800/50";
-                lastMatchStatus.innerText = `Listeye Yeni Eklendi (Satır ${newRowIdx + 1})`;
-
-                showToast("Barkod listede yoktu, sona eklendi (Adet: 1)", "plus-circle");
-                highlightRow(newRowIdx);
+                showToast(`[${cleanCode}] yeni barkod olarak listenin sonuna eklendi!`, 'info');
             }
 
-            playBeepSound();
-            if (navigator.vibrate) navigator.vibrate(80);
-            triggerScanVisualFeedback();
+            // Play Feedback
+            playBeep(1000, 150);
+            triggerVibrate();
 
-            updateUI();
-        }
+            // Enable export button if disabled
+            document.getElementById('btnExport').disabled = false;
 
-        // Camera Scanner Control Functions
-        function getScannerInstance() {
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5Qrcode("reader", {
-                    formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13 ],
-                    verbose: false
-                });
+            // Update UI & Highlight Row
+            renderTable(foundIndex);
+
+            // Auto Clear Input Field
+            const inputField = document.getElementById('manualInput');
+            if (inputField) {
+                inputField.value = "";
+                inputField.focus();
             }
-            return html5QrcodeScanner;
+
+            // Cooldown delay (1 sec) to prevent accidental double-scanning of camera
+            clearTimeout(cooldownTimer);
+            cooldownTimer = setTimeout(() => {
+                isProcessing = false;
+            }, 1000);
         }
 
-        async function startScanner() {
-            const scanner = getScannerInstance();
-            const config = { fps: 15, qrbox: { width: 250, height: 170 }, aspectRatio: 1.777778 };
-
-            try {
-                await scanner.start({ facingMode: currentFacingMode }, config, onScanSuccess, () => {});
-                isScanning = true;
-                document.getElementById('scannerPlaceholder').classList.add('hidden');
-                document.getElementById('btnStartCam').disabled = true;
-                document.getElementById('btnStopCam').disabled = false;
-                
-                const cameraStatusBadge = document.getElementById('cameraStatusBadge');
-                cameraStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/50";
-                cameraStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Yayında`;
-                
-                showToast("Kamera başlatıldı", "camera");
-            } catch (err) {
-                console.error("Kamera hatası:", err);
-                showToast("Kamera açılamadı! İzinleri kontrol edin.", "alert-circle");
-            }
-        }
-
-        async function stopScanner() {
-            if (html5QrcodeScanner && isScanning) {
-                try {
-                    await html5QrcodeScanner.stop();
-                    isScanning = false;
-                    document.getElementById('scannerPlaceholder').classList.remove('hidden');
-                    document.getElementById('btnStartCam').disabled = false;
-                    document.getElementById('btnStopCam').disabled = true;
-                    
-                    const cameraStatusBadge = document.getElementById('cameraStatusBadge');
-                    cameraStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300";
-                    cameraStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı`;
-                } catch (err) {
-                    console.error("Kamera kapatma hatası:", err);
-                }
-            }
-        }
-
-        async function switchCamera() {
-            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-            if (isScanning) {
-                await stopScanner();
-                await startScanner();
-            }
-        }
-
-        function onScanSuccess(decodedText) {
-            const cleanCode = decodedText.trim();
-            const now = Date.now();
-
-            if (cleanCode === lastScannedCode && (now - lastScannedTime) < SCAN_COOLDOWN_MS) return;
-
-            lastScannedCode = cleanCode;
-            lastScannedTime = now;
-
-            processBarcode(cleanCode);
-        }
-
-        function triggerScanVisualFeedback() {
-            const scanFeedback = document.getElementById('scanFeedback');
-            scanFeedback.classList.remove('opacity-0');
-            setTimeout(() => scanFeedback.classList.add('opacity-0'), 400);
-        }
-
-        // Manual Submit Handler
-        function handleManualSubmit(event) {
-            event.preventDefault();
+        // Manual Input Submit
+        function handleManualSubmit(e) {
+            e.preventDefault();
             const input = document.getElementById('manualInput');
-            const code = input.value.trim();
-            
-            processBarcode(code);
-            input.value = ""; // Okuma alanını otomatik siler
-            input.focus();
+            processBarcode(input.value);
         }
 
-        // Row Operations
-        function incrementRow(index) {
-            let current = parseInt(excelRows[index][5], 10);
-            excelRows[index][5] = isNaN(current) ? 1 : current + 1;
-            updateUI();
-        }
+        // Render Table Data
+        function renderTable(highlightIdx = -1) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
 
-        function decrementRow(index) {
-            let current = parseInt(excelRows[index][5], 10);
-            if (!isNaN(current) && current > 1) {
-                excelRows[index][5] = current - 1;
-            } else {
-                excelRows[index][5] = 0;
-            }
-            updateUI();
-        }
-
-        function deleteRow(index) {
-            excelRows.splice(index, 1);
-            updateUI();
-            showToast("Satır silindi", "trash");
-        }
-
-        function clearList() {
-            if (excelRows.length === 0) return;
-            if (confirm("Tüm tablo verilerini silmek istediğinizden emin misiniz?")) {
-                excelRows = [];
-                document.getElementById('uploadBanner').classList.remove('hidden');
-                document.getElementById('fileNameBadge').classList.add('hidden');
-                updateUI();
-                showToast("Tüm liste temizlendi", "trash-2");
-            }
-        }
-
-        // Update UI & Render Table
-        function updateUI() {
-            const tbody = document.getElementById('excelTableBody');
-            const emptyState = document.getElementById('emptyListState');
-            tbody.innerHTML = "";
-
-            let totalItems = 0;
-            let totalRowsCount = excelRows.length;
-
-            if (totalRowsCount === 0) {
-                emptyState.classList.remove('hidden');
-            } else {
-                emptyState.classList.add('hidden');
-
-                excelRows.forEach((row, idx) => {
-                    const colA = escapeHtml(String(row[0] || ""));
-                    const colB = escapeHtml(String(row[1] || ""));
-                    const colC = escapeHtml(String(row[2] || ""));
-                    const colD = escapeHtml(String(row[3] || ""));
-                    const colE = escapeHtml(String(row[4] || ""));
-                    const colFVal = row[5];
-                    
-                    const numericF = parseInt(colFVal, 10);
-                    if (!isNaN(numericF)) totalItems += numericF;
-
-                    const tr = document.createElement('tr');
-                    tr.id = `excel-row-${idx}`;
-                    tr.className = "hover:bg-slate-800/70 transition duration-150 border-b border-slate-800/60";
-                    tr.innerHTML = `
-                        <td class="py-2.5 px-3 text-center text-slate-500 font-mono text-xs">${idx + 1}</td>
-                        <td class="py-2.5 px-4 font-mono font-bold text-indigo-300 bg-indigo-950/20 break-all">${colA || "-"}</td>
-                        <td class="py-2.5 px-4 text-slate-300 text-xs">${colB || "-"}</td>
-                        <td class="py-2.5 px-4 text-slate-400 text-xs">${colC || "-"}</td>
-                        <td class="py-2.5 px-4 text-slate-400 text-xs">${colD || "-"}</td>
-                        <td class="py-2.5 px-4 text-slate-400 text-xs">${colE || "-"}</td>
-                        <td class="py-2.5 px-4 text-center bg-emerald-950/20">
-                            <span class="inline-flex items-center justify-center px-3 py-1 rounded-lg text-xs font-bold ${numericF > 0 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50' : 'bg-slate-800 text-slate-400'}">
-                                ${colFVal !== undefined && colFVal !== "" ? colFVal : 0}
-                            </span>
+            if (excelData.length === 0) {
+                tbody.innerHTML = `
+                    <tr id="emptyRow">
+                        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                            <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+                            Henüz barkod okutulmadı veya Excel yüklenmedi.
                         </td>
-                        <td class="py-2.5 px-4 text-right">
-                            <div class="flex items-center justify-end gap-1">
-                                <button onclick="incrementRow(${idx})" title="Adet Artır (+1)" class="p-1 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-emerald-400">
-                                    <i data-lucide="plus" class="w-4 h-4"></i>
-                                </button>
-                                <button onclick="decrementRow(${idx})" title="Adet Azalt (-1)" class="p-1 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-amber-400">
-                                    <i data-lucide="minus" class="w-4 h-4"></i>
-                                </button>
-                                <button onclick="deleteRow(${idx})" title="Satırı Sil" class="p-1 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-rose-400">
-                                    <i data-lucide="trash" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-
-                lucide.createIcons();
-            }
-
-            document.getElementById('totalTypesCount').innerText = totalRowsCount;
-            document.getElementById('totalItemsCount').innerText = totalItems;
-        }
-
-        function highlightRow(index) {
-            setTimeout(() => {
-                const el = document.getElementById(`excel-row-${index}`);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.classList.add('highlight-row');
-                    setTimeout(() => el.classList.remove('highlight-row'), 1500);
-                }
-            }, 100);
-        }
-
-        // Export Updated Dataset to Excel (.xlsx)
-        function exportToExcel() {
-            if (excelRows.length === 0) {
-                showToast("Dışa aktarılacak Excel verisi bulunamadı!", "alert-circle");
+                    </tr>`;
+                document.getElementById('totalItems').textContent = "0 Çeşit";
+                document.getElementById('totalQuantity').textContent = "Toplam: 0 Adet";
                 return;
             }
 
-            // Create Sheet from Array of Arrays
-            const worksheet = XLSX.utils.aoa_to_sheet(excelRows);
+            let totalQtySum = 0;
 
-            // Format Column A explicitly as string to preserve leading zeros
-            const range = XLSX.utils.decode_range(worksheet['!ref']);
-            for (let R = range.s.r; R <= range.e.r; ++R) {
-                const cellRef = XLSX.utils.encode_cell({ r: R, c: 0 }); // Col A
-                if (worksheet[cellRef]) {
-                    worksheet[cellRef].t = 's';
-                }
+            excelData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                const isHighlighted = index === highlightIdx;
+                tr.className = `transition-colors duration-300 ${isHighlighted ? 'bg-blue-900/60 text-white font-bold' : 'hover:bg-slate-700/40'}`;
+                if (isHighlighted) tr.id = "highlightedRow";
+
+                const barcode = row[0] || "";
+                const b = row[1] || "";
+                const c = row[2] || "";
+                const d = row[3] || "";
+                const e = row[4] || "";
+                const qty = row[5] !== "" ? row[5] : 0;
+
+                totalQtySum += parseFloat(qty) || 0;
+
+                tr.innerHTML = `
+                    <td class="p-2.5 font-bold text-slate-200">${barcode}</td>
+                    <td class="p-2.5 text-slate-400 max-w-[80px] truncate">${b}</td>
+                    <td class="p-2.5 text-slate-400 max-w-[80px] truncate">${c}</td>
+                    <td class="p-2.5 text-slate-400 max-w-[80px] truncate">${d}</td>
+                    <td class="p-2.5 text-slate-400 max-w-[80px] truncate">${e}</td>
+                    <td class="p-2.5 text-center font-bold text-emerald-400 text-sm bg-emerald-950/20">${qty}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Scroll highlighted row into view
+            if (highlightIdx !== -1) {
+                const el = document.getElementById("highlightedRow");
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            // Auto Column Widths
-            worksheet['!cols'] = [
-                { wch: 20 }, // A (Barkod)
-                { wch: 25 }, // B
-                { wch: 15 }, // C
-                { wch: 10 }, // D
-                { wch: 12 }, // E
-                { wch: 12 }  // F (Adet)
-            ];
-
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Sayim_Sonucu");
-
-            const date = new Date().toISOString().slice(0, 10);
-            const exportFileName = loadedFileName.replace(/\.[^/.]+$/, "") + `_sayimli_${date}.xlsx`;
-
-            XLSX.writeFile(workbook, exportFileName);
-            showToast("Güncellenmiş Excel indirildi (.xlsx)", "file-spreadsheet");
+            document.getElementById('totalItems').textContent = `${excelData.length} Çeşit`;
+            document.getElementById('totalQuantity').textContent = `Toplam: ${totalQtySum} Adet`;
         }
 
-        // Custom Toast Notification
-        function showToast(message, iconName = "info") {
+        // Camera Control
+        function startCamera() {
+            document.getElementById('cameraPlaceholder').classList.add('hidden');
+            document.getElementById('btnStartCam').disabled = true;
+            document.getElementById('btnStopCam').disabled = false;
+            document.getElementById('scanStatus').textContent = "Kamera Aktif";
+            document.getElementById('scanStatus').className = "text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse";
+
+            html5QrcodeScanner = new Html5Qrcode("reader");
+
+            const config = {
+                fps: 15,
+                qrbox: { width: 260, height: 160 }
+            };
+
+            html5QrcodeScanner.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    processBarcode(decodedText);
+                },
+                (errorMessage) => {
+                    // Ignore frame scanning errors
+                }
+            ).catch(err => {
+                showToast("Kamera başlatılamadı! Kamera iznini kontrol edin.", "error");
+                stopCamera();
+            });
+        }
+
+        function stopCamera() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    html5QrcodeScanner.clear();
+                    resetCameraUI();
+                }).catch(err => resetCameraUI());
+            } else {
+                resetCameraUI();
+            }
+        }
+
+        function resetCameraUI() {
+            document.getElementById('cameraPlaceholder').classList.remove('hidden');
+            document.getElementById('btnStartCam').disabled = false;
+            document.getElementById('btnStopCam').disabled = true;
+            document.getElementById('scanStatus').textContent = "Kamera Kapalı";
+            document.getElementById('scanStatus').className = "text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-400";
+        }
+
+        // Toast Messages
+        function showToast(msg, type = 'info') {
             const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            const toastIcon = document.getElementById('toastIcon');
+            toast.classList.remove('hidden', 'bg-emerald-900/80', 'text-emerald-200', 'bg-red-900/80', 'text-red-200', 'bg-blue-900/80', 'text-blue-200');
 
-            toastMessage.innerText = message;
-            toastIcon.setAttribute('data-lucide', iconName);
-            lucide.createIcons();
-
-            toast.classList.remove('translate-y-20', 'opacity-0');
-            toast.classList.add('translate-y-0', 'opacity-100');
+            if (type === 'success') {
+                toast.classList.add('bg-emerald-900/80', 'text-emerald-200', 'border', 'border-emerald-700');
+                toast.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${msg}`;
+            } else if (type === 'error') {
+                toast.classList.add('bg-red-900/80', 'text-red-200', 'border', 'border-red-700');
+                toast.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${msg}`;
+            } else {
+                toast.classList.add('bg-blue-900/80', 'text-blue-200', 'border', 'border-blue-700');
+                toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${msg}`;
+            }
 
             setTimeout(() => {
-                toast.classList.remove('translate-y-0', 'opacity-100');
-                toast.classList.add('translate-y-20', 'opacity-0');
-            }, 2500);
+                toast.classList.add('hidden');
+            }, 3000);
         }
 
-        // Utility Sanitization
-        function escapeHtml(text) {
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+        // Clear All Data
+        function clearList() {
+            if (confirm("Tüm verileri ve okutulan barkodları temizlemek istediğinize emin misiniz?")) {
+                excelData = [];
+                renderTable();
+                document.getElementById('excelFile').value = "";
+                document.getElementById('fileInfo').classList.add('hidden');
+                document.getElementById('uploadLabel').textContent = "Excel dosyanızı seçin veya sürükleyin";
+                document.getElementById('btnExport').disabled = true;
+                showToast("Liste temizlendi.", "info");
+            }
+        }
+
+        // Export Updated Excel (.xlsx)
+        function exportExcel() {
+            if (excelData.length === 0) {
+                showToast("İndirilecek veri bulunamadı!", "error");
+                return;
+            }
+
+            // Build Sheet JS structure
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // Format Col A as string explicitly
+            Object.keys(ws).forEach(cell => {
+                if (cell.startsWith('A') && cell !== 'A1') {
+                    ws[cell].z = '@';
+                }
+            });
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Sayım Listesi");
+
+            // Download file
+            const fileName = `Barkod_Sayim_Guncel_${new Date().toISOString().slice(0,10)}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            showToast("Excel dosyası başarıyla indirildi.", "success");
         }
     </script>
 </body>
