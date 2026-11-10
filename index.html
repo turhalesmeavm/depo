@@ -1,326 +1,567 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" class="h-full bg-slate-900 text-slate-100">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Kameralı Mobil Barkod Sayacı</title>
-    <!-- Kamera ile barkod okuma kütüphanesi -->
-    <script src="https://unpkg.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barkod Okuyucu ve Adet Sayacı</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTML5-QRCode Library CDN -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            margin: 0;
-            padding: 10px;
-            background-color: #f1f3f5;
-            color: #212529;
+            font-family: 'Inter', sans-serif;
         }
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        h2 {
-            text-align: center;
-            color: #1a252f;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-        #camera-section {
-            background: #212529;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 15px;
-            border: 2px solid #343a40;
-            display: none;
-        }
+        /* html5-qrcode scanner custom styling */
         #reader {
-            width: 100% !important;
             border: none !important;
         }
-        #reader button {
-            display: none !important;
+        #reader video {
+            object-fit: cover !important;
+            border-radius: 0.75rem;
         }
-        .input-group {
-            margin-bottom: 15px;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ced4da;
-            border-radius: 8px;
-            font-size: 16px;
-        }
-        input[type="text"]:focus {
-            border-color: #4dabf7;
-            outline: none;
-        }
-        .btn-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        button.action-btn {
-            width: 100%;
-            padding: 14px;
-            font-size: 14px;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            color: white;
-            transition: background-color 0.2s;
-        }
-        .btn-camera-toggle {
-            grid-column: span 2;
-            background-color: #4dabf7;
-            margin-bottom: 5px;
-        }
-        .btn-camera-toggle.active {
-            background-color: #e03131;
-        }
-        .btn-excel { background-color: #2b8a3e; }
-        .btn-excel:active { background-color: #237032; }
-        .btn-clear { background-color: #868e96; }
-        .btn-clear:active { background-color: #495057; }
-        
-        #scan-flash {
-            height: 4px;
+        #reader__scan_region {
             background: transparent;
-            margin-bottom: 10px;
-            transition: background 0.1s ease;
         }
-        .flash-active { background: #40c057 !important; }
-
-        .table-container {
-            max-height: 35vh;
-            overflow-y: auto;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
+        #reader__dashboard {
+            display: none !important; /* Standart butonları gizle, özel butonlar kullanıyoruz */
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
         }
-        th, td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-            font-size: 14px;
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
         }
-        th {
-            background-color: #343a40;
-            color: white;
-            position: sticky;
-            top: 0;
-            z-index: 1;
+        ::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 3px;
         }
-        .td-count {
-            width: 70px;
-            text-align: center;
-            font-weight: bold;
-            color: #1c7ed6;
-        }
-        .total-info {
-            margin-top: 12px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #495057;
-            display: flex;
-            justify-content: space-between;
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, 1);
         }
     </style>
 </head>
-<body>
+<body class="h-full flex flex-col justify-between antialiased selection:bg-indigo-500 selection:text-white">
 
-<div class="container">
-    <h2>Kameralı Barkod Sistemi</h2>
-    
-    <button class="action-btn btn-camera-toggle" id="cameraToggleBtn" onclick="toggleCamera()">Kamerayı Aç</button>
-
-    <div id="camera-section">
-        <div id="reader"></div>
-    </div>
-
-    <div id="scan-flash"></div>
-
-    <div class="input-group">
-        <input type="text" id="barcodeInput" placeholder="Veya buraya el ile yazıp Enter'a basın...">
-    </div>
-
-    <div class="btn-group">
-        <button class="action-btn btn-excel" onclick="exportToExcel()">Excel (.xls) İndir</button>
-        <button class="action-btn btn-clear" onclick="clearList()">Listeyi Temizle</button>
-    </div>
-
-    <div class="table-container">
-        <table id="barcodeTable">
-            <thead>
-                <tr>
-                    <th>Barkod No</th>
-                    <th style="text-align: center;">Adet</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Veriler -->
-            </tbody>
-        </table>
-    </div>
-    
-    <div class="total-info">
-        <span id="totalItems">Farklı Ürün: 0</span>
-        <span id="totalCounts">Toplam Adet: 0</span>
-    </div>
-</div>
-
-<script>
-    const barcodeInput = document.getElementById('barcodeInput');
-    const tableBody = document.querySelector('#barcodeTable tbody');
-    const totalItems = document.getElementById('totalItems');
-    const totalCounts = document.getElementById('totalCounts');
-    const scanFlash = document.getElementById('scan-flash');
-    const cameraSection = document.getElementById('camera-section');
-    const cameraToggleBtn = document.getElementById('cameraToggleBtn');
-    
-    let barcodeData = JSON.parse(localStorage.getItem('savedBarcodesBtn')) || {};
-    let lastScannedCode = "";
-    let lastScannedTime = 0;
-    let html5QrCode = null;
-
-    renderTable();
-
-    function toggleCamera() {
-        if (!html5QrCode) {
-            html5QrCode = new Html5Qrcode("reader");
-        }
-
-        if (cameraSection.style.display === "none" || cameraSection.style.display === "") {
-            cameraSection.style.display = "block";
-            cameraToggleBtn.textContent = "Kamerayı Kapat";
-            cameraToggleBtn.classList.add("active");
-
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                {
-                    fps: 15,
-                    qrbox: { width: 250, height: 150 }
-                },
-                onScanSuccess
-            ).catch(err => {
-                alert("Kamera başlatılamadı! Lütfen kamera izni verdiğinizden emin olun.");
-                console.error(err);
-                stopCameraUI();
-            });
-        } else {
-            html5QrCode.stop().then(() => {
-                stopCameraUI();
-            }).catch(err => {
-                console.error("Kamera durdurulurken hata oluştu:", err);
-                stopCameraUI();
-            });
-        }
-    }
-
-    function stopCameraUI() {
-        cameraSection.style.display = "none";
-        cameraToggleBtn.textContent = "Kamerayı Aç";
-        cameraToggleBtn.classList.remove("active");
-    }
-
-    function onScanSuccess(decodedText, decodedResult) {
-        const currentTime = Date.now();
-        
-        if (decodedText === lastScannedCode && (currentTime - lastScannedTime < 1500)) {
-            return; 
-        }
-
-        lastScannedCode = decodedText;
-        lastScannedTime = currentTime;
-
-        scanFlash.classList.add('flash-active');
-        setTimeout(() => scanFlash.classList.remove('flash-active'), 300);
-
-        playBeep();
-        ekleVeyaArttir(decodedText);
-    }
-
-    function playBeep() {
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.12);
-        } catch (e) {
-            console.log("Ses hatası.");
-        }
-    }
-
-    barcodeInput.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
-            event.preventDefault(); 
-            const barcode = barcodeInput.value.trim();
-            if (barcode !== "") {
-                ekleVeyaArttir(barcode);
-            }
-            barcodeInput.value = "";
-        }
-    });
-
-    function ekleVeyaArttir(barcode) {
-        if (barcodeData[barcode]) {
-            barcodeData[barcode] += 1;
-        } else {
-            barcodeData[barcode] = 1;
-        }
-        saveAndRefresh();
-    }
-
-    function saveAndRefresh() {
-        localStorage.setItem('savedBarcodesBtn', JSON.stringify(barcodeData));
-        renderTable();
-    }
-
-    function renderTable() {
-        tableBody.innerHTML = "";
-        let totalQty = 0;
-        let uniqueItems = 0;
-        const keys = Object.keys(barcodeData).reverse();
-
-        keys.forEach(barcode => {
-            const count = barcodeData[barcode];
-            totalQty += count;
-            uniqueItems++;
-
-            const row = document.createElement('tr');
-            const barcodeCell = document.createElement('td');
-            barcodeCell.textContent = barcode;
+    <!-- Header Navigation -->
+    <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700/60 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-500/30">
+                    <i data-lucide="scan-line" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight text-white">Barkod & Adet Sayacı</h1>
+                    <p class="text-xs text-slate-400">Hızlı Stok & Kod Taraması</p>
+                </div>
+            </div>
             
-            const countCell = document.createElement('td');
-            countCell.textContent = count;
-            countCell.className = "td-count";
+            <!-- Quick Stats Badge -->
+            <div class="flex items-center gap-2 bg-slate-900/60 border border-slate-700/50 px-3 py-1.5 rounded-lg text-sm">
+                <span class="text-slate-400">Toplam Çeşit: <strong id="totalTypesCount" class="text-indigo-400 font-semibold">0</strong></span>
+                <span class="text-slate-600">|</span>
+                <span class="text-slate-400">Toplam Adet: <strong id="totalItemsCount" class="text-emerald-400 font-semibold">0</strong></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-4xl w-full mx-auto p-4 flex-1 flex flex-col gap-6">
+
+        <!-- Top Section: Scanner & Controls Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            row.appendChild(barcodeCell);
-            row.appendChild(countCell);
-            tableBody.appendChild(row);
+            <!-- Camera Scanner Box -->
+            <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between min-h-[320px]">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                        <i data-lucide="camera" class="w-4 h-4 text-indigo-400"></i> Kamera Alanı
+                    </span>
+                    <span id="cameraStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı
+                    </span>
+                </div>
+
+                <!-- QR/Barcode Reader Window -->
+                <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-700/50 flex items-center justify-center">
+                    <div id="reader" class="w-full h-full"></div>
+                    
+                    <!-- Scanner Placeholder state when off -->
+                    <div id="scannerPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-900/90 z-10">
+                        <div class="p-4 bg-slate-800 rounded-full mb-3 text-slate-500 border border-slate-700">
+                            <i data-lucide="camera-off" class="w-8 h-8"></i>
+                        </div>
+                        <p class="text-sm text-slate-400">Kamera şu an kapalı</p>
+                        <p class="text-xs text-slate-500 mt-1">Taramaya başlamak için aşağıdaki butonu kullanın</p>
+                    </div>
+
+                    <!-- Scan Feedback Overlay Animation -->
+                    <div id="scanFeedback" class="absolute inset-0 bg-emerald-500/20 border-4 border-emerald-500 rounded-xl pointer-events-none opacity-0 transition-opacity duration-200 z-20 flex items-center justify-center">
+                        <div class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="w-5 h-5"></i> Barkod Okundu!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Camera Action Controls -->
+                <div class="mt-4 flex gap-2">
+                    <button id="btnStartCam" onclick="startScanner()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 rounded-xl transition duration-150 shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 text-sm">
+                        <i data-lucide="play" class="w-4 h-4"></i> Kamerayı Başlat
+                    </button>
+                    <button id="btnStopCam" onclick="stopScanner()" disabled class="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium py-2.5 px-4 rounded-xl transition duration-150 flex items-center justify-center gap-2 text-sm">
+                        <i data-lucide="square" class="w-4 h-4"></i> Durdur
+                    </button>
+                    <button onclick="switchCamera()" title="Kamera Değiştir" class="bg-slate-700 hover:bg-slate-600 text-white p-2.5 rounded-xl transition duration-150">
+                        <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manual Input & Quick Tools -->
+            <div class="flex flex-col gap-4">
+                <!-- Manual Entry Card -->
+                <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl">
+                    <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                        <i data-lucide="keyboard" class="w-4 h-4 text-indigo-400"></i> Manuel Barkod Ekle
+                    </h2>
+                    <form onsubmit="handleManualSubmit(event)" class="flex gap-2">
+                        <input type="text" id="manualInput" placeholder="Barkod veya QR kod girin..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2.5 rounded-xl transition text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Ekle
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Last Scanned Info Card -->
+                <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex-1 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Son Okunan Barkod</span>
+                        <div id="lastScannedDisplay" class="mt-2 text-xl font-mono font-bold text-indigo-300 bg-slate-950/60 p-3 rounded-xl border border-slate-700/40 break-all min-h-[52px] flex items-center">
+                            -
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-3 flex items-center gap-1.5">
+                        <i data-lucide="info" class="w-4 h-4 text-slate-500 flex-shrink-0"></i> 
+                        Aynı barkod tekrar okutulduğunda adedi otomatik artacaktır. (1.5 sn bekleme süresi aktif)
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Section: Scanned List & Data Actions -->
+        <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 md:p-5 shadow-xl flex-1 flex flex-col">
+            <!-- List Header Actions -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="list" class="w-5 h-5 text-indigo-400"></i>
+                    <h2 class="font-semibold text-slate-200">Okunan Barkod Listesi</h2>
+                </div>
+                
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <button onclick="exportToCSV()" class="flex-1 sm:flex-none bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-slate-600/50">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i> CSV İndir
+                    </button>
+                    <button onclick="clearList()" class="flex-1 sm:flex-none bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-rose-800/40">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Listeyi Temizle
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto overflow-y-auto max-h-[350px] border border-slate-700/60 rounded-xl bg-slate-900/50">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-900/90 sticky top-0 z-10 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/60">
+                        <tr>
+                            <th class="py-3 px-4">#</th>
+                            <th class="py-3 px-4">Barkod / Kod İçeriği</th>
+                            <th class="py-3 px-4 text-center">Adet</th>
+                            <th class="py-3 px-4 text-right">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="barcodeTableBody" class="divide-y divide-slate-800 text-sm">
+                        <!-- Dynamic items will be added here -->
+                    </tbody>
+                </table>
+                
+                <!-- Empty State Message -->
+                <div id="emptyListState" class="py-12 text-center flex flex-col items-center justify-center text-slate-500">
+                    <i data-lucide="barcode" class="w-10 h-10 mb-2 stroke-1 opacity-50"></i>
+                    <p class="text-sm">Henüz barkod taranmadı.</p>
+                    <p class="text-xs text-slate-600 mt-0.5">Kamerayı açarak veya manuel veri girerek liste oluşturabilirsiniz.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-4 text-xs text-slate-500 border-t border-slate-800">
+        GitHub Pages Uyumlu Barkod Okuyucu App &bull; LocalStorage ile verileriniz tarayıcınızda saklanır.
+    </footer>
+
+    <!-- Custom Notification Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 z-50 transform translate-y-20 opacity-0 transition-all duration-300 ease-out bg-slate-800 text-slate-100 border border-slate-700 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+        <i id="toastIcon" data-lucide="info" class="w-5 h-5 text-indigo-400"></i>
+        <span id="toastMessage" class="text-sm font-medium">İşlem gerçekleştirildi.</span>
+    </div>
+
+    <!-- Application Script Logic -->
+    <script>
+        // State Variables
+        let barcodeMap = new Map(); // Key: Barcode, Value: { count: number, timestamp: Date }
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        let currentFacingMode = "environment"; // Default rear camera
+        let lastScannedCode = null;
+        let lastScannedTime = 0;
+        const SCAN_COOLDOWN_MS = 1500; // Delay to prevent double triggers for the same barcode
+
+        // DOM Elements
+        const readerElement = document.getElementById('reader');
+        const scannerPlaceholder = document.getElementById('scannerPlaceholder');
+        const barcodeTableBody = document.getElementById('barcodeTableBody');
+        const emptyListState = document.getElementById('emptyListState');
+        const lastScannedDisplay = document.getElementById('lastScannedDisplay');
+        const totalTypesCount = document.getElementById('totalTypesCount');
+        const totalItemsCount = document.getElementById('totalItemsCount');
+        const cameraStatusBadge = document.getElementById('cameraStatusBadge');
+        const btnStartCam = document.getElementById('btnStartCam');
+        const btnStopCam = document.getElementById('btnStopCam');
+        const scanFeedback = document.getElementById('scanFeedback');
+
+        // Initialize Icons & Load Stored Data
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadLocalStorageData();
+            updateUI();
         });
 
-        totalItems.textContent = `Farklı Ürün: ${uniqueItems}`;
-        totalCounts.textContent = `Toplam Adet: ${totalQty}`;
-    }
+        // Initialize Scanner Instance
+        function getScannerInstance() {
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5Qrcode("reader");
+            }
+            return html5QrcodeScanner;
+        }
 
-    function clearList() {
+        // Start Camera Scanning
+        async function startScanner() {
+            const scanner = getScannerInstance();
+            const config = { 
+                fps: 15, 
+                qrbox: { width: 250, height: 180 },
+                aspectRatio: 1.777778
+            };
+
+            try {
+                await scanner.start(
+                    { facingMode: currentFacingMode }, 
+                    config, 
+                    onScanSuccess, 
+                    onScanFailure
+                );
+                isScanning = true;
+                scannerPlaceholder.classList.add('hidden');
+                btnStartCam.disabled = true;
+                btnStopCam.disabled = false;
+                
+                // Update Badge UI
+                cameraStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/50";
+                cameraStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Yayında`;
+                
+                showToast("Kamera başarıyla başlatıldı", "camera");
+            } catch (err) {
+                console.error("Kamera başlatma hatası:", err);
+                showToast("Kamera başlatılamadı! İzinleri kontrol edin.", "alert-circle");
+            }
+        }
+
+        // Stop Camera Scanning
+        async function stopScanner() {
+            if (html5QrcodeScanner && isScanning) {
+                try {
+                    await html5QrcodeScanner.stop();
+                    isScanning = false;
+                    scannerPlaceholder.classList.remove('hidden');
+                    btnStartCam.disabled = false;
+                    btnStopCam.disabled = true;
+                    
+                    // Update Badge UI
+                    cameraStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300";
+                    cameraStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı`;
+                    
+                    showToast("Kamera durduruldu", "square");
+                } catch (err) {
+                    console.error("Kamera durdurma hatası:", err);
+                }
+            }
+        }
+
+        // Switch Camera (Front/Back)
+        async function switchCamera() {
+            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+            if (isScanning) {
+                await stopScanner();
+                await startScanner();
+            } else {
+                showToast(`Kamera yönü değiştirildi: ${currentFacingMode === "environment" ? "Arka" : "Ön"}`, "flip-horizontal");
+            }
+        }
+
+        // Scan Success Callback
+        function onScanSuccess(decodedText, decodedResult) {
+            const now = Date.now();
+            
+            // Cooldown check for identical barcodes
+            if (decodedText === lastScannedCode && (now - lastScannedTime) < SCAN_COOLDOWN_MS) {
+                return; // Ignore rapid duplicate scan
+            }
+
+            lastScannedCode = decodedText;
+            lastScannedTime = now;
+
+            // Trigger Visual Feedback
+            triggerScanVisualFeedback();
+
+            // Add or Increment Barcode
+            addBarcodeToList(decodedText);
+        }
+
+        function onScanFailure(error) {
+            // Silence normal frame-by-frame scanning failures
+        }
+
+        // Visual Green Flash feedback on scan
+        function triggerScanVisualFeedback() {
+            scanFeedback.classList.remove('opacity-0');
+            setTimeout(() => {
+                scanFeedback.classList.add('opacity-0');
+            }, 400);
+        }
+
+        // Add or Increment logic
+        function addBarcodeToList(code) {
+            const cleanCode = code.trim();
+            if (!cleanCode) return;
+
+            if (barcodeMap.has(cleanCode)) {
+                const currentData = barcodeMap.get(cleanCode);
+                barcodeMap.set(cleanCode, {
+                    count: currentData.count + 1,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                barcodeMap.set(cleanCode, {
+                    count: 1,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            lastScannedDisplay.innerText = cleanCode;
+            saveLocalStorageData();
+            updateUI();
+        }
+
+        // Handle Manual Form Submission
+        function handleManualSubmit(event) {
+            event.preventDefault();
+            const input = document.getElementById('manualInput');
+            const code = input.value.trim();
+            
+            if (code) {
+                addBarcodeToList(code);
+                showToast("Barkod manuel olarak eklendi", "check");
+                input.value = ""; // Okuma alanını otomatik siler
+                input.focus();
+            }
+        }
+
+        // Increment Quantity
+        function incrementItem(code) {
+            if (barcodeMap.has(code)) {
+                const data = barcodeMap.get(code);
+                data.count += 1;
+                barcodeMap.set(code, data);
+                saveLocalStorageData();
+                updateUI();
+            }
+        }
+
+        // Decrement Quantity
+        function decrementItem(code) {
+            if (barcodeMap.has(code)) {
+                const data = barcodeMap.get(code);
+                if (data.count > 1) {
+                    data.count -= 1;
+                    barcodeMap.set(code, data);
+                } else {
+                    deleteItem(code);
+                    return;
+                }
+                saveLocalStorageData();
+                updateUI();
+            }
+        }
+
+        // Delete Row Item
+        function deleteItem(code) {
+            if (barcodeMap.has(code)) {
+                barcodeMap.delete(code);
+                saveLocalStorageData();
+                updateUI();
+                showToast("Barkod silindi", "trash");
+            }
+        }
+
+        // Clear All List
+        function clearList() {
+            if (barcodeMap.size === 0) return;
+            
+            if (confirm("Tüm okunan barkod listesini silmek istediğinizden emin misiniz?")) {
+                barcodeMap.clear();
+                lastScannedDisplay.innerText = "-";
+                saveLocalStorageData();
+                updateUI();
+                showToast("Tüm liste temizlendi", "trash-2");
+            }
+        }
+
+        // Update Dynamic UI Components
+        function updateUI() {
+            barcodeTableBody.innerHTML = "";
+            
+            let index = 1;
+            let totalCount = 0;
+
+            if (barcodeMap.size === 0) {
+                emptyListState.classList.remove('hidden');
+            } else {
+                emptyListState.classList.add('hidden');
+                
+                barcodeMap.forEach((data, code) => {
+                    totalCount += data.count;
+
+                    const row = document.createElement('tr');
+                    row.className = "hover:bg-slate-800/60 transition duration-150";
+                    row.innerHTML = `
+                        <td class="py-3 px-4 text-slate-500 font-mono text-xs">${index++}</td>
+                        <td class="py-3 px-4 font-mono font-medium text-slate-200 break-all">${escapeHtml(code)}</td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/50">
+                                ${data.count}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                                <button onclick="incrementItem('${escapeJsString(code)}')" title="Arttır" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-emerald-400 transition">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="decrementItem('${escapeJsString(code)}')" title="Azalt" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-amber-400 transition">
+                                    <i data-lucide="minus" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="deleteItem('${escapeJsString(code)}')" title="Sil" class="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-rose-400 transition">
+                                    <i data-lucide="trash" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    barcodeTableBody.appendChild(row);
+                });
+
+                // Re-render Lucide Icons for dynamic content
+                lucide.createIcons();
+            }
+
+            // Update Summary Stats
+            totalTypesCount.innerText = barcodeMap.size;
+            totalItemsCount.innerText = totalCount;
+        }
+
+        // Export Data to CSV
+        function exportToCSV() {
+            if (barcodeMap.size === 0) {
+                showToast("Dışa aktarılacak veri bulunamadı!", "alert-circle");
+                return;
+            }
+
+            let csvContent = "\uFEFF"; // UTF-8 BOM for Excel Turkish character compatibility
+            csvContent += "Barkod;Adet;Son Okuma Tarihi\n";
+
+            barcodeMap.forEach((data, code) => {
+                const dateStr = new Date(data.timestamp).toLocaleString("tr-TR");
+                csvContent += `"${code.replace(/"/g, '""')}";${data.count};"${dateStr}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            
+            const date = new Date().toISOString().slice(0, 10);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `barkod_listesi_${date}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast("CSV dosyası indirildi", "download");
+        }
+
+        // Local Storage Syncing
+        function saveLocalStorageData() {
+            const serializedData = JSON.stringify(Array.from(barcodeMap.entries()));
+            localStorage.setItem('scanned_barcodes_data', serializedData);
+        }
+
+        function loadLocalStorageData() {
+            const savedData = localStorage.getItem('scanned_barcodes_data');
+            if (savedData) {
+                try {
+                    const parsedEntries = JSON.parse(savedData);
+                    barcodeMap = new Map(parsedEntries);
+                } catch (e) {
+                    console.error("LocalStorage yükleme hatası:", e);
+                    barcodeMap = new Map();
+                }
+            }
+        }
+
+        // Custom Toast Notification
+        function showToast(message, iconName = "info") {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMessage.innerText = message;
+            toastIcon.setAttribute('data-lucide', iconName);
+            lucide.createIcons();
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 2500);
+        }
+
+        // Utility: Sanitization
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function escapeJsString(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+    </script>
+</body>
+</html>
