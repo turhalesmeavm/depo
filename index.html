@@ -57,7 +57,12 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg leading-tight text-white">Barkod & Adet Sayacı</h1>
-                    <p class="text-xs text-slate-400">Hızlı Stok & Kod Taraması</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-xs text-slate-400">Hızlı Stok & Kod Taraması</p>
+                        <span class="inline-flex items-center gap-1 text-[10px] bg-indigo-500/20 text-indigo-300 font-semibold px-2 py-0.5 rounded-md border border-indigo-500/30">
+                            <i data-lucide="shield-check" class="w-3 h-3"></i> EAN-13 Modu Aktif
+                        </span>
+                    </div>
                 </div>
             </div>
             
@@ -82,9 +87,12 @@
                     <span class="text-sm font-semibold text-slate-300 flex items-center gap-2">
                         <i data-lucide="camera" class="w-4 h-4 text-indigo-400"></i> Kamera Alanı
                     </span>
-                    <span id="cameraStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">
-                        <span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[11px] font-medium bg-slate-900 text-slate-400 px-2 py-0.5 rounded border border-slate-700">EAN-13 Only</span>
+                        <span id="cameraStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">
+                            <span class="w-2 h-2 rounded-full bg-slate-400"></span> Kapalı
+                        </span>
+                    </div>
                 </div>
 
                 <!-- QR/Barcode Reader Window -->
@@ -126,11 +134,14 @@
             <div class="flex flex-col gap-4">
                 <!-- Manual Entry Card -->
                 <div class="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 shadow-xl">
-                    <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-                        <i data-lucide="keyboard" class="w-4 h-4 text-indigo-400"></i> Manuel Barkod Ekle
+                    <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center justify-between">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="keyboard" class="w-4 h-4 text-indigo-400"></i> Manuel Barkod Ekle
+                        </span>
+                        <span class="text-xs text-slate-500 font-normal">(13 Haneli EAN-13)</span>
                     </h2>
                     <form onsubmit="handleManualSubmit(event)" class="flex gap-2">
-                        <input type="text" id="manualInput" placeholder="Barkod veya QR kod girin..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                        <input type="text" id="manualInput" maxlength="13" placeholder="Örn: 8690000000000" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-mono">
                         <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2.5 rounded-xl transition text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
                             <i data-lucide="plus" class="w-4 h-4"></i> Ekle
                         </button>
@@ -221,6 +232,28 @@
         let lastScannedTime = 0;
         const SCAN_COOLDOWN_MS = 1500; // Delay to prevent double triggers for the same barcode
 
+        // Audio Context for Beep Sound
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playBeepSound() {
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime); // 1000Hz frequency
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.12); // Beep duration 120ms
+            } catch (e) {
+                console.log("Ses çalınamadı:", e);
+            }
+        }
+
         // DOM Elements
         const readerElement = document.getElementById('reader');
         const scannerPlaceholder = document.getElementById('scannerPlaceholder');
@@ -241,12 +274,30 @@
             updateUI();
         });
 
-        // Initialize Scanner Instance
+        // Initialize Scanner Instance with EAN-13 restriction
         function getScannerInstance() {
             if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5Qrcode("reader");
+                html5QrcodeScanner = new Html5Qrcode("reader", {
+                    formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13 ],
+                    verbose: false
+                });
             }
             return html5QrcodeScanner;
+        }
+
+        // EAN-13 Format Validation Rule
+        function isValidEAN13(code) {
+            // Must be exactly 13 numeric digits
+            if (!/^\d{13}$/.test(code)) return false;
+            
+            // Validate EAN-13 Checksum digit
+            let sum = 0;
+            for (let i = 0; i < 12; i++) {
+                let digit = parseInt(code.charAt(i), 10);
+                sum += (i % 2 === 0) ? digit : digit * 3;
+            }
+            let checksum = (10 - (sum % 10)) % 10;
+            return checksum === parseInt(code.charAt(12), 10);
         }
 
         // Start Camera Scanning
@@ -274,7 +325,7 @@
                 cameraStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/50";
                 cameraStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Yayında`;
                 
-                showToast("Kamera başarıyla başlatıldı", "camera");
+                showToast("Kamera başlatıldı (EAN-13 Modu)", "camera");
             } catch (err) {
                 console.error("Kamera başlatma hatası:", err);
                 showToast("Kamera başlatılamadı! İzinleri kontrol edin.", "alert-circle");
@@ -315,21 +366,29 @@
 
         // Scan Success Callback
         function onScanSuccess(decodedText, decodedResult) {
+            const cleanCode = decodedText.trim();
+
+            // Validate standard EAN-13 structure
+            if (!isValidEAN13(cleanCode)) {
+                return; // Discard non-EAN-13 codes
+            }
+
             const now = Date.now();
-            
             // Cooldown check for identical barcodes
-            if (decodedText === lastScannedCode && (now - lastScannedTime) < SCAN_COOLDOWN_MS) {
+            if (cleanCode === lastScannedCode && (now - lastScannedTime) < SCAN_COOLDOWN_MS) {
                 return; // Ignore rapid duplicate scan
             }
 
-            lastScannedCode = decodedText;
+            lastScannedCode = cleanCode;
             lastScannedTime = now;
 
-            // Trigger Visual Feedback
+            // Trigger Visual & Haptic/Audio Feedback
             triggerScanVisualFeedback();
+            playBeepSound();
+            if (navigator.vibrate) navigator.vibrate(80);
 
             // Add or Increment Barcode
-            addBarcodeToList(decodedText);
+            addBarcodeToList(cleanCode);
         }
 
         function onScanFailure(error) {
@@ -373,12 +432,16 @@
             const input = document.getElementById('manualInput');
             const code = input.value.trim();
             
-            if (code) {
-                addBarcodeToList(code);
-                showToast("Barkod manuel olarak eklendi", "check");
-                input.value = ""; // Okuma alanını otomatik siler
-                input.focus();
+            if (!isValidEAN13(code)) {
+                showToast("Geçersiz EAN-13! (13 haneli ve geçerli sayı olmalı)", "alert-circle");
+                return;
             }
+
+            addBarcodeToList(code);
+            playBeepSound();
+            showToast("EAN-13 barkod başarıyla eklendi", "check");
+            input.value = ""; // Okuma alanını otomatik temizler
+            input.focus();
         }
 
         // Increment Quantity
