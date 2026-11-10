@@ -6,6 +6,8 @@
     <title>Barkod Okuyucu ve Adet Sayacı</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS Library for Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- HTML5-QRCode Library CDN -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <!-- Lucide Icons -->
@@ -174,8 +176,8 @@
                 </div>
                 
                 <div class="flex items-center gap-2 w-full sm:w-auto">
-                    <button onclick="exportToCSV()" class="flex-1 sm:flex-none bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-slate-600/50">
-                        <i data-lucide="download" class="w-3.5 h-3.5"></i> CSV İndir
+                    <button onclick="exportToExcel()" class="flex-1 sm:flex-none bg-emerald-700 hover:bg-emerald-600 text-white font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-emerald-600/50 shadow-md shadow-emerald-700/20">
+                        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Excel Olarak İndir
                     </button>
                     <button onclick="clearList()" class="flex-1 sm:flex-none bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-medium px-3.5 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-rose-800/40">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Listeyi Temizle
@@ -545,33 +547,56 @@
             totalItemsCount.innerText = totalCount;
         }
 
-        // Export Data to CSV
-        function exportToCSV() {
+        // Export Data to Microsoft Excel (.xlsx)
+        function exportToExcel() {
             if (barcodeMap.size === 0) {
                 showToast("Dışa aktarılacak veri bulunamadı!", "alert-circle");
                 return;
             }
 
-            let csvContent = "\uFEFF"; // UTF-8 BOM for Excel Turkish character compatibility
-            csvContent += "Barkod;Adet;Son Okuma Tarihi\n";
+            // Prepare array of objects for SheetJS
+            const exportData = [];
 
             barcodeMap.forEach((data, code) => {
                 const dateStr = new Date(data.timestamp).toLocaleString("tr-TR");
-                csvContent += `"${code.replace(/"/g, '""')}";${data.count};"${dateStr}"\n`;
+                exportData.push({
+                    "Barkod (EAN-13)": code, // String format preserves leading zeros
+                    "Adet": data.count,
+                    "İlk Okuma Tarihi": dateStr
+                });
             });
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            
-            const date = new Date().toISOString().slice(0, 10);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `barkod_listesi_${date}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Create Worksheet
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-            showToast("CSV dosyası indirildi", "download");
+            // Format barcode column explicitly as text to prevent Excel scientific notation (e.g., 8.69E+12)
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                const cellRef = XLSX.utils.encode_cell({ r: R, c: 0 }); // Column 0 is Barkod
+                if (worksheet[cellRef]) {
+                    worksheet[cellRef].t = 's'; // Set cell type to String
+                }
+            }
+
+            // Auto-fit column widths
+            worksheet['!cols'] = [
+                { wch: 20 }, // Barkod
+                { wch: 10 }, // Adet
+                { wch: 22 }  // Tarih
+            ];
+
+            // Create Workbook and add worksheet
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Barkod Adet Listesi");
+
+            // Generate filename with current date
+            const date = new Date().toISOString().slice(0, 10);
+            const fileName = `barkod_listesi_${date}.xlsx`;
+
+            // Export native XLSX file
+            XLSX.writeFile(workbook, fileName);
+
+            showToast("Excel dosyası başarıyla indirildi (.xlsx)", "file-spreadsheet");
         }
 
         // Local Storage Syncing
