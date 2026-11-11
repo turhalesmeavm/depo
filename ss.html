@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barkod Okuyucu & Excel Adet Eşleştirici</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ZXing Library for High Performance Barcode Scanning -->
+    <script type="text/javascript" src="https://unpkg.com/@zxing/library@latest"></script>
+    <!-- SheetJS (xlsx) for Excel processing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        #videoContainer video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 0.75rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
+
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 mb-6 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-barcode text-blue-500 text-3xl"></i>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">Barkod & Excel Sayım Sistemi (Hızlı Tarayıcı)</h1>
+                    <p class="text-xs text-slate-400">A Sütunu: Barkod, F Sütunu: Adet</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="btnExport" disabled onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2 shadow">
+                    <i class="fa-solid fa-file-excel"></i> Excel Olarak İndir
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Upload & Scanner -->
+        <section class="lg:col-span-5 space-y-6">
+
+            <!-- 1. Excel Upload Card -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg">
+                <h2 class="text-base font-semibold mb-3 flex items-center gap-2 text-slate-200">
+                    <i class="fa-solid fa-file-import text-blue-400"></i> 1. Excel Dosyası Yükle (.xlsx / .xls)
+                </h2>
+                <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-600 hover:border-blue-500 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-4 cursor-pointer transition-all">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                    <span class="text-xs text-slate-300 font-medium" id="uploadLabel">Excel dosyanızı seçin veya sürükleyin</span>
+                    <span class="text-[10px] text-slate-500 mt-1">Dosya yoksa boş liste ile başlanacaktır</span>
+                    <input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden" onchange="handleFileSelect(event)">
+                </label>
+                <div id="fileInfo" class="hidden mt-3 text-xs bg-slate-700/60 p-2.5 rounded border border-slate-600 flex justify-between items-center">
+                    <span id="fileName" class="truncate font-mono text-emerald-400"></span>
+                    <span id="rowCount" class="bg-slate-600 text-slate-200 text-[10px] px-2 py-0.5 rounded-full font-sans"></span>
+                </div>
+            </div>
+
+            <!-- 2. Scanner Card -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-base font-semibold flex items-center gap-2 text-slate-200">
+                        <i class="fa-solid fa-camera text-blue-400"></i> 2. Hızlı Kamera Tarayıcı
+                    </h2>
+                    <span id="scanStatus" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-400">Kamera Kapalı</span>
+                </div>
+
+                <!-- Camera Container -->
+                <div id="videoContainer" class="relative bg-black rounded-xl overflow-hidden border border-slate-700 aspect-video flex items-center justify-center">
+                    <video id="interactive" class="relative" muted playsinline></video>
+                    <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-center p-4 z-10">
+                        <i class="fa-solid fa-video-slash text-4xl text-slate-600 mb-2"></i>
+                        <p class="text-xs text-slate-400">Kamerayı başlatmak için aşağıdaki butona tıklayın</p>
+                    </div>
+                    <!-- Tarama Çizgisi Animasyonu -->
+                    <div id="scanLine" class="absolute inset-x-0 h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse hidden z-20 top-1/2"></div>
+                </div>
+
+                <!-- Camera Controls -->
+                <div class="flex gap-2">
+                    <button id="btnStartCam" onclick="startCamera()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> Kamerayı Başlat
+                    </button>
+                    <button id="btnStopCam" onclick="stopCamera()" disabled class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium py-2 px-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-stop"></i> Durdur
+                    </button>
+                </div>
+
+                <!-- Manual Entry Form -->
+                <div class="pt-3 border-t border-slate-700">
+                    <label class="block text-xs text-slate-400 mb-1">El İle Barkod / Kod Girişi (El Tipi Okuyucular İçin)</label>
+                    <form onsubmit="handleManualSubmit(event)" class="flex gap-2">
+                        <input type="text" id="manualInput" autocomplete="off" placeholder="Barkodu okutun veya yazın..." class="flex-1 bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm font-mono text-slate-100 outline-none transition-all">
+                        <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded-lg font-medium transition-all">Ekle</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Feedback Message -->
+            <div id="toast" class="hidden p-3 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow"></div>
+
+        </section>
+
+        <!-- Right Column: Live Data Table -->
+        <section class="lg:col-span-7">
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg h-full flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-base font-semibold text-slate-200">Sayım Listesi</h2>
+                        <span id="totalItems" class="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-0.5 rounded-full border border-blue-500/20 font-mono">0 Çeşit</span>
+                        <span id="totalQuantity" class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-mono">Toplam: 0 Adet</span>
+                    </div>
+                    <button onclick="clearList()" class="text-xs text-slate-400 hover:text-red-400 transition-colors flex items-center gap-1">
+                        <i class="fa-solid fa-trash-can"></i> Temizle
+                    </button>
+                </div>
+
+                <!-- Table Container -->
+                <div class="flex-1 overflow-x-auto border border-slate-700 rounded-lg max-h-[6
