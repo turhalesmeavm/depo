@@ -6,16 +6,14 @@
     <title>Barkod Okuyucu & Excel Adet Eşleştirici</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- ZXing Library for High Performance Barcode Scanning -->
-    <script type="text/javascript" src="https://unpkg.com/@zxing/library@latest"></script>
+    <!-- HTML5-QRCode Library (Kararlı ve test edilmiş sürüm) -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <!-- SheetJS (xlsx) for Excel processing -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- FontAwesome icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        #videoContainer video {
-            width: 100% !important;
-            height: 100% !important;
+        #reader video {
             object-fit: cover !important;
             border-radius: 0.75rem;
         }
@@ -29,7 +27,7 @@
             <div class="flex items-center gap-3">
                 <i class="fa-solid fa-barcode text-blue-500 text-3xl"></i>
                 <div>
-                    <h1 class="text-xl font-bold tracking-wide">Barkod & Excel Sayım Sistemi (Hızlı Tarayıcı)</h1>
+                    <h1 class="text-xl font-bold tracking-wide">Barkod & Excel Sayım Sistemi</h1>
                     <p class="text-xs text-slate-400">A Sütunu: Barkod, F Sütunu: Adet</p>
                 </div>
             </div>
@@ -68,20 +66,18 @@
             <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg space-y-4">
                 <div class="flex items-center justify-between">
                     <h2 class="text-base font-semibold flex items-center gap-2 text-slate-200">
-                        <i class="fa-solid fa-camera text-blue-400"></i> 2. Hızlı Kamera Tarayıcı
+                        <i class="fa-solid fa-camera text-blue-400"></i> 2. Kamera ile Barkod Tara
                     </h2>
                     <span id="scanStatus" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-400">Kamera Kapalı</span>
                 </div>
 
                 <!-- Camera Container -->
-                <div id="videoContainer" class="relative bg-black rounded-xl overflow-hidden border border-slate-700 aspect-video flex items-center justify-center">
-                    <video id="interactive" class="relative" muted playsinline></video>
+                <div class="relative bg-black rounded-xl overflow-hidden border border-slate-700 aspect-video flex items-center justify-center">
+                    <div id="reader" class="w-full h-full"></div>
                     <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-center p-4 z-10">
                         <i class="fa-solid fa-video-slash text-4xl text-slate-600 mb-2"></i>
                         <p class="text-xs text-slate-400">Kamerayı başlatmak için aşağıdaki butona tıklayın</p>
                     </div>
-                    <!-- Tarama Çizgisi Animasyonu -->
-                    <div id="scanLine" class="absolute inset-x-0 h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse hidden z-20 top-1/2"></div>
                 </div>
 
                 <!-- Camera Controls -->
@@ -124,4 +120,103 @@
                 </div>
 
                 <!-- Table Container -->
-                <div class="flex-1 overflow-x-auto border border-slate-700 rounded-lg max-h-[6
+                <div class="flex-1 overflow-x-auto border border-slate-700 rounded-lg max-h-[600px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="bg-slate-900/80 text-slate-400 sticky top-0 border-b border-slate-700 backdrop-blur">
+                            <tr>
+                                <th class="p-3 w-16 text-center">A Sütunu (Barkod)</th>
+                                <th class="p-3">B</th>
+                                <th class="p-3">C</th>
+                                <th class="p-3">D</th>
+                                <th class="p-3">E</th>
+                                <th class="p-3 w-20 text-center font-bold text-emerald-400">F (Adet)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-700/60 font-mono">
+                            <tr id="emptyRow">
+                                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                                    <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+                                    Henüz barkod okutulmadı veya Excel yüklenmedi.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        let excelData = [];
+        let html5QrcodeScanner = null;
+        let isProcessing = false;
+        let cooldownTimer = null;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playBeep(freq = 1000, duration = 120) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + (duration / 1000));
+            } catch (e) {}
+        }
+
+        function triggerVibrate() {
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('uploadLabel').textContent = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+
+                const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+
+                excelData = rawRows.map(row => {
+                    let formattedRow = Array.isArray(row) ? [...row] : [];
+                    while (formattedRow.length < 6) formattedRow.push("");
+                    formattedRow[0] = formattedRow[0] !== undefined && formattedRow[0] !== null ? String(formattedRow[0]).trim() : "";
+                    let qty = parseFloat(formattedRow[5]);
+                    formattedRow[5] = !isNaN(qty) ? qty : (formattedRow[0] !== "" ? 0 : "");
+                    return formattedRow;
+                });
+
+                document.getElementById('fileInfo').classList.remove('hidden');
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('rowCount').textContent = `${excelData.length} satır yüklendi`;
+                document.getElementById('btnExport').disabled = false;
+
+                renderTable();
+                showToast(`Excel yüklendi: ${excelData.length} satır bulundu.`, 'success');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processBarcode(scannedCode) {
+            if (!scannedCode || isProcessing) return;
+
+            const cleanCode = String(scannedCode).trim();
+            if (cleanCode === "") return;
+
+            isProcessing = true;
+
+            let foundIndex = -1;
+            for (let i = 0; i < excelData.length; i++) {
+                if (excelData[i][0] === cleanCode) {
+                    foundIndex =
