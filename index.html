@@ -28,7 +28,7 @@
                 <i class="fa-solid fa-barcode text-blue-500 text-3xl"></i>
                 <div>
                     <h1 class="text-xl font-bold tracking-wide">Barkod & Excel Sayım Sistemi</h1>
-                    <p class="text-xs text-slate-400">A Sütunu: Barkod, F Sütunu: Adet</p>
+                    <p class="text-xs text-slate-400">Tüm Barkod Türlerini Destekler (A Sütunu: Barkod, F Sütunu: Adet)</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
@@ -74,7 +74,7 @@
                 <!-- Camera Container -->
                 <div class="relative bg-black rounded-xl overflow-hidden border border-slate-700 aspect-video flex items-center justify-center">
                     <div id="reader" class="w-full h-full"></div>
-                    <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-center p-4 z-10">
+                    <div id="cameraPlaceholder" class="text-center p-4">
                         <i class="fa-solid fa-video-slash text-4xl text-slate-600 mb-2"></i>
                         <p class="text-xs text-slate-400">Kamerayı başlatmak için aşağıdaki butona tıklayın</p>
                     </div>
@@ -148,11 +148,13 @@
     </main>
 
     <script>
-        let excelData = [];
+        // Data Structure
+        let excelData = []; // Matrix representation of Excel rows
         let html5QrcodeScanner = null;
         let isProcessing = false;
         let cooldownTimer = null;
 
+        // Audio Context for feedback
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playBeep(freq = 1000, duration = 120) {
             try {
@@ -173,6 +175,7 @@
             if (navigator.vibrate) navigator.vibrate(100);
         }
 
+        // Excel File Handling
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -186,14 +189,21 @@
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
 
+                // Convert sheet to array of arrays (preserving empty cells)
                 const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
 
                 excelData = rawRows.map(row => {
                     let formattedRow = Array.isArray(row) ? [...row] : [];
+                    // Ensure at least 6 columns (A to F)
                     while (formattedRow.length < 6) formattedRow.push("");
+
+                    // Normalize Barcode (Col A) to String
                     formattedRow[0] = formattedRow[0] !== undefined && formattedRow[0] !== null ? String(formattedRow[0]).trim() : "";
+
+                    // Normalize Quantity (Col F) to Number
                     let qty = parseFloat(formattedRow[5]);
                     formattedRow[5] = !isNaN(qty) ? qty : (formattedRow[0] !== "" ? 0 : "");
+
                     return formattedRow;
                 });
 
@@ -208,6 +218,7 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // Process Scanned / Inputted Barcode
         function processBarcode(scannedCode) {
             if (!scannedCode || isProcessing) return;
 
@@ -216,6 +227,7 @@
 
             isProcessing = true;
 
+            // Search in Col A (Index 0)
             let foundIndex = -1;
             for (let i = 0; i < excelData.length; i++) {
                 if (excelData[i][0] === cleanCode) {
@@ -225,41 +237,53 @@
             }
 
             if (foundIndex !== -1) {
+                // Barcode EXISTS -> Increment Col F (Index 5)
                 let currentQty = parseFloat(excelData[foundIndex][5]);
                 if (isNaN(currentQty)) currentQty = 0;
                 excelData[foundIndex][5] = currentQty + 1;
+
                 showToast(`[${cleanCode}] adedi artırıldı! Yeni Adet: ${excelData[foundIndex][5]}`, 'success');
             } else {
+                // Barcode NOT FOUND -> Append new row at the end
                 const newRow = [cleanCode, "", "", "", "", 1];
                 excelData.push(newRow);
                 foundIndex = excelData.length - 1;
+
                 showToast(`[${cleanCode}] yeni barkod olarak listenin sonuna eklendi!`, 'info');
             }
 
+            // Play Feedback
             playBeep(1000, 150);
             triggerVibrate();
 
+            // Enable export button if disabled
             document.getElementById('btnExport').disabled = false;
+
+            // Update UI & Highlight Row
             renderTable(foundIndex);
 
+            // Auto Clear Input Field
             const inputField = document.getElementById('manualInput');
             if (inputField) {
                 inputField.value = "";
                 inputField.focus();
             }
 
+            // Cooldown delay (1 sec) to prevent accidental double-scanning of camera
             clearTimeout(cooldownTimer);
             cooldownTimer = setTimeout(() => {
                 isProcessing = false;
             }, 1000);
         }
 
+        // Manual Input Submit
         function handleManualSubmit(e) {
             e.preventDefault();
             const input = document.getElementById('manualInput');
             processBarcode(input.value);
         }
 
+        // Render Table Data
         function renderTable(highlightIdx = -1) {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
@@ -305,6 +329,7 @@
                 tbody.appendChild(tr);
             });
 
+            // Scroll highlighted row into view
             if (highlightIdx !== -1) {
                 const el = document.getElementById("highlightedRow");
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -314,7 +339,8 @@
             document.getElementById('totalQuantity').textContent = `Toplam: ${totalQtySum} Adet`;
         }
 
-        async function startCamera() {
+        // Camera Control
+        function startCamera() {
             document.getElementById('cameraPlaceholder').classList.add('hidden');
             document.getElementById('btnStartCam').disabled = true;
             document.getElementById('btnStopCam').disabled = false;
@@ -325,36 +351,22 @@
 
             const config = {
                 fps: 15,
-                qrbox: { width: 250, height: 150 }
+                qrbox: { width: 260, height: 160 }
             };
 
-            try {
-                // Önce arka kamera ile başlatmayı dene
-                await html5QrcodeScanner.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => { processBarcode(decodedText); },
-                    (errorMessage) => {}
-                );
-            } catch (err) {
-                try {
-                    // Arka kamera bulunamazsa herhangi bir kamera ile başlatmayı dene
-                    const devices = await Html5Qrcode.getCameras();
-                    if (devices && devices.length > 0) {
-                        await html5QrcodeScanner.start(
-                            devices[0].id,
-                            config,
-                            (decodedText) => { processBarcode(decodedText); },
-                            (errorMessage) => {}
-                        );
-                    } else {
-                        throw new Error("Kamera bulunamadı");
-                    }
-                } catch (innerErr) {
-                    showToast("Kamera başlatılamadı! İzinleri kontrol edin.", "error");
-                    stopCamera();
+            html5QrcodeScanner.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    processBarcode(decodedText);
+                },
+                (errorMessage) => {
+                    // Ignore frame scanning errors
                 }
-            }
+            ).catch(err => {
+                showToast("Kamera başlatılamadı! Kamera iznini kontrol edin.", "error");
+                stopCamera();
+            });
         }
 
         function stopCamera() {
@@ -376,6 +388,7 @@
             document.getElementById('scanStatus').className = "text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-400";
         }
 
+        // Toast Messages
         function showToast(msg, type = 'info') {
             const toast = document.getElementById('toast');
             toast.classList.remove('hidden', 'bg-emerald-900/80', 'text-emerald-200', 'bg-red-900/80', 'text-red-200', 'bg-blue-900/80', 'text-blue-200');
@@ -396,6 +409,7 @@
             }, 3000);
         }
 
+        // Clear All Data
         function clearList() {
             if (confirm("Tüm verileri ve okutulan barkodları temizlemek istediğinize emin misiniz?")) {
                 excelData = [];
@@ -408,13 +422,17 @@
             }
         }
 
+        // Export Updated Excel (.xlsx)
         function exportExcel() {
             if (excelData.length === 0) {
                 showToast("İndirilecek veri bulunamadı!", "error");
                 return;
             }
 
+            // Build Sheet JS structure
             const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // Format Col A as string explicitly
             Object.keys(ws).forEach(cell => {
                 if (cell.startsWith('A') && cell !== 'A1') {
                     ws[cell].z = '@';
@@ -424,6 +442,7 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Sayım Listesi");
 
+            // Download file
             const fileName = `Barkod_Sayim_Guncel_${new Date().toISOString().slice(0,10)}.xlsx`;
             XLSX.writeFile(wb, fileName);
             showToast("Excel dosyası başarıyla indirildi.", "success");
